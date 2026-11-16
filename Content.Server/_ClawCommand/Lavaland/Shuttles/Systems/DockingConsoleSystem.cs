@@ -38,6 +38,7 @@ using Content.Server.Station.Systems;
 using Content.Shared.Humanoid;
 using Content.Shared.Mobs.Components;
 using Content.Shared.Mobs.Systems;
+using Content.Shared.PAI;
 using Content.Shared.Security.Components;
 using Content.Shared.Shuttles.Components;
 using Content.Shared.Shuttles.Systems;
@@ -141,7 +142,7 @@ public sealed partial class DockingConsoleSystem : SharedDockingConsoleSystem
         if (!HasComp<DockingShuttleComponent>(shuttle))
             return;
 
-        var query = EntityQueryEnumerator<DockingConsoleComponent>();
+        var query = AllEntityQuery<DockingConsoleComponent>();
         while (query.MoveNext(out var uid, out var comp))
         {
             if (comp.Shuttle == shuttle)
@@ -166,7 +167,7 @@ public sealed partial class DockingConsoleSystem : SharedDockingConsoleSystem
 
         if (TryComp<DockingShuttleComponent>(shuttle, out var docking))
         {
-            destinations = docking.Destinations;
+            destinations = new List<DockingDestination>(docking.Destinations); // _ClawCommand: snapshot, not the live list
         }
 
         var state = new DockingConsoleState(ftlState, ftlTime, destinations);
@@ -178,7 +179,7 @@ public sealed partial class DockingConsoleSystem : SharedDockingConsoleSystem
         if (ent.Comp.Shuttle is not {} shuttle || !TryComp<DockingShuttleComponent>(shuttle, out var docking))
             return;
 
-        if (args.Index < 0 || args.Index > docking.Destinations.Count)
+        if (args.Index < 0 || args.Index >= docking.Destinations.Count)
             return;
 
         var dest = docking.Destinations[args.Index];
@@ -226,8 +227,9 @@ public sealed partial class DockingConsoleSystem : SharedDockingConsoleSystem
                 continue;
             }
 
-            // borgs are crew-controlled, not unidentified lifeforms
-            if (HasComp<BorgChassisComponent>(uid))
+            // borgs are crew-controlled, not unidentified lifeforms. Their positronic brains (and pAIs)
+            // carry their own MobState and sit inside the chassis/pockets on the same grid, so skip those too
+            if (HasComp<BorgChassisComponent>(uid) || HasComp<BorgBrainComponent>(uid) || HasComp<PAIComponent>(uid))
                 continue;
 
             // a humanoid with a station record on file is accounted-for crew
@@ -345,7 +347,7 @@ public sealed partial class DockingConsoleSystem : SharedDockingConsoleSystem
         EntityUid? largestGrid = null;
         var largestSize = 0f;
 
-        var query = EntityQueryEnumerator<MapGridComponent, TransformComponent>();
+        var query = AllEntityQuery<MapGridComponent, TransformComponent>();
         while (query.MoveNext(out var gridUid, out var grid, out var xform))
         {
             if (xform.MapID != map)
@@ -388,7 +390,7 @@ public sealed partial class DockingConsoleSystem : SharedDockingConsoleSystem
 
     private EntityUid? FindShuttle(EntityWhitelist whitelist)
     {
-        var query = EntityQueryEnumerator<DockingShuttleComponent>();
+        var query = AllEntityQuery<DockingShuttleComponent>();
         while (query.MoveNext(out var uid, out _))
         {
             if (_whitelist.IsValid(whitelist, uid))
